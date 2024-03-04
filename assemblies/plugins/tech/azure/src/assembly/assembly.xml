@@ -51,7 +51,7 @@
             <useProjectArtifact>false</useProjectArtifact>
             <scope>runtime</scope>
             <includes>
-                <include>com.microsoft.azure:azure-storage</include>
+                <include>com.github.dalet-oss:vfs-azure</include>
                 <include>com.microsoft.azure:azure-keyvault-core</include>
                 <include>com.microsoft.azure:azure-eventhubs:jar</include>
                 <include>org.apache.qpid:proton-j:jar</include>

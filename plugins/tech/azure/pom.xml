@@ -48,7 +48,7 @@
       Run 'mvn dependency:tree' in that plugin to verify.
     -->
     <properties>
-        <azure-storage.version>8.6.6</azure-storage.version>
+        <dalet-vfs.version>4.5.0</dalet-vfs.version>
         <azure-eventhubs.version>3.3.0</azure-eventhubs.version>
     </properties>
 
@@ -61,9 +61,9 @@
         <!-- Azure VFS -->
 
         <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>azure-storage</artifactId>
-            <version>${azure-storage.version}</version>
+            <groupId>com.github.dalet-oss</groupId>
+            <artifactId>vfs-azure</artifactId>
+            <version>${dalet-vfs.version}</version>
         </dependency>
 
         <!-- Azure Event Hubs -->
