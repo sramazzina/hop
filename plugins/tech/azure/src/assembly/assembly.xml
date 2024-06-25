@@ -49,7 +49,21 @@
             <outputDirectory>lib</outputDirectory>
             <scope>runtime</scope>
             <includes>
-                <include>com.microsoft.azure:azure-storage</include>
+                <include>com.azure:azure-storage-blob</include>
+                <include>com.azure:azure-storage-common</include>
+                <include>com.azure:azure-core</include>
+                <include>com.azure:azure-json</include>
+                <include>com.azure:azure-json</include>
+                <include>com.azure:azure-core-http-okhttp</include>
+                <include>com.squareup.okio:okio</include>
+                <include>com.squareup.okio:okio-jvm</include>
+                <include>com.squareup.okhttp3:okhttp</include>
+                <include>io.projectreactor:reactor-core</include>
+                <include>io.projectreactor.netty:reactor-netty-http</include>
+                <include>org.reactivestreams:reactive-streams</include>
+                <include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar</include>
+                <include>io.netty:netty-transport:jar</include>
+
                 <include>com.microsoft.azure:azure-keyvault-core</include>
                 <include>com.microsoft.azure:azure-eventhubs:jar</include>
                 <include>org.apache.qpid:proton-j:jar</include>

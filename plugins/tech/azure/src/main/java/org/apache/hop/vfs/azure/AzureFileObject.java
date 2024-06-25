@@ -18,19 +18,19 @@
 
 package org.apache.hop.vfs.azure;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.models.BlobItem;
 import com.microsoft.azure.storage.StorageException;
 import com.microsoft.azure.storage.blob.CloudBlob;
-import com.microsoft.azure.storage.blob.CloudBlobClient;
-import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.CloudBlobDirectory;
 import com.microsoft.azure.storage.blob.CloudBlockBlob;
-import com.microsoft.azure.storage.blob.ListBlobItem;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -39,13 +39,12 @@ import org.apache.commons.vfs2.FileSystemException;
 import org.apache.commons.vfs2.FileType;
 import org.apache.commons.vfs2.provider.AbstractFileName;
 import org.apache.commons.vfs2.provider.AbstractFileObject;
-import org.apache.commons.vfs2.provider.UriParser;
 
 public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   public class BlockBlobOutputStream extends OutputStream {
 
-    private final CloudBlockBlob bb;
+    private CloudBlockBlob bb;
     private final OutputStream outputStream;
     long written = 0;
 
@@ -88,56 +87,73 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
     }
   }
 
-  private final CloudBlobClient service;
-  private boolean attached = false;
+  private static final String SLASH = "/";
+
+  private final BlobContainerClient containerClient;
+  private final BlobContainerAsyncClient containerClientAsync;
+  private boolean isAttached = false;
   private long size;
   private long lastModified;
-  private FileType type;
+  private FileType fileObjectType;
   private List<String> children = null;
-  private CloudBlobContainer container;
+  private BlobClient blobClient;
   private String containerPath;
   private CloudBlob cloudBlob;
   private CloudBlobDirectory cloudDir;
-  private final String markerFileName = ".cvfs.temp";
-  private OutputStream blobOutputStream;
+  private String markerFileName = ".cvfs.temp";
 
   public AzureFileObject(
-      AbstractFileName fileName, AzureFileSystem fileSystem, CloudBlobClient service)
+      AbstractFileName fileName,
+      AzureFileSystem fileSystem,
+      BlobContainerClient containerClient,
+      BlobContainerAsyncClient containerClientAsync)
       throws FileSystemException {
     super(fileName, fileSystem);
-    this.service = service;
+    this.containerClient = containerClient;
+    this.containerClientAsync = containerClientAsync;
+  }
+
+  private String getBlobPath(String blobUrl, String blobContainerUrl) {
+    String blobUri =
+        URLDecoder.decode(blobUrl)
+            .substring(blobContainerUrl.length() + 1, URLDecoder.decode(blobUrl).length());
+    return blobUri;
   }
 
   @Override
   protected void doAttach() throws URISyntaxException, StorageException {
-    if (!attached) {
+    if (!isAttached) {
       if (getName().getPath().equals("/")) {
         children = new ArrayList<>();
-        for (CloudBlobContainer container : service.listContainers()) {
-          children.add(container.getName());
+        for (BlobItem blobItem : containerClient.listBlobs()) {
+          children.add(blobItem.getName());
         }
         size = children.size();
         lastModified = 0;
-        type = FileType.FOLDER;
-        container = null;
+        fileObjectType = FileType.FOLDER;
+        blobClient = null;
         containerPath = "";
       } else {
         String containerName = ((AzureFileName) getName()).getContainer();
-        container = service.getContainerReference(containerName);
+        blobClient = containerClient.getBlobClient(containerName);
         containerPath = ((AzureFileName) getName()).getPathAfterContainer();
         String thisPath = "/" + containerName + containerPath;
-        if (container.exists()) {
+        if (blobClient.exists()) {
           children = new ArrayList<>();
           if (containerPath.equals("")) {
-            if (container.exists()) {
-              for (ListBlobItem item : container.listBlobs()) {
-                StringBuilder path = new StringBuilder(item.getUri().getPath());
-                UriParser.extractFirstElement(path);
+            if (blobClient.exists()) {
+              for (BlobItem blobItem : blobClient.getContainerClient().listBlobs()) {
+                // StringBuilder path = new StringBuilder(blobItem.getUri().getPath());
+                String path =
+                    getBlobPath(
+                        containerClient.getBlobClient(blobItem.getName()).getBlobUrl(),
+                        containerClient.getBlobContainerUrl());
+                // UriParser.extractFirstElement(path);
                 children.add(path.substring(1));
               }
-              type = FileType.FOLDER;
+              fileObjectType = FileType.FOLDER;
             } else {
-              type = FileType.IMAGINARY;
+              fileObjectType = FileType.IMAGINARY;
             }
             lastModified = 0;
             size = children.size();
@@ -151,28 +167,36 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
             String relpath =
                 removeLeadingSlash(
                     ((AzureFileName) (getName().getParent())).getPathAfterContainer());
-            for (ListBlobItem item :
-                relpath.equals("") ? container.listBlobs() : container.listBlobs(relpath + "/")) {
-              String itemPath = removeTrailingSlash(item.getUri().getPath());
+            for (BlobItem blobItem :
+                relpath.equals("")
+                    ? blobClient.getContainerClient().listBlobs()
+                    : blobClient.getContainerClient().listBlobsByHierarchy(relpath + "/")) {
+              // String itemPath = removeTrailingSlash(blobItem.getUri().getPath());
+              String itemPath =
+                  getBlobPath(
+                      containerClient.getBlobClient(blobItem.getName()).getBlobUrl(),
+                      containerClient.getBlobContainerUrl());
               if (pathsMatch(itemPath, thisPath)) {
-                if (item instanceof CloudBlob) {
-                  cloudBlob = (CloudBlob) item;
-                } else {
-                  cloudDir = (CloudBlobDirectory) item;
-                  for (ListBlobItem blob : cloudDir.listBlobs()) {
-                    URI blobUri = blob.getUri();
-                    String path = blobUri.getPath();
-                    while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
-                    int idx = path.lastIndexOf('/');
-                    if (idx != -1) path = path.substring(idx + 1);
-                    children.add(path);
-                  }
-                }
+                // TODO SR temporarily commented
+                //                    if (blobItem instanceof BlobItem) {
+                //                      cloudBlob = (CloudBlob) item;
+                //                    } else {
+                //                      cloudDir = (CloudBlobDirectory) item;
+                //                      for (ListBlobItem blob : cloudDir.listBlobs()) {
+                //                        URI blobUri = blob.getUri();
+                //                        String path = blobUri.getPath();
+                //                        while (path.endsWith("/")) path = path.substring(0,
+                // path.length() - 1);
+                //                        int idx = path.lastIndexOf('/');
+                //                        if (idx != -1) path = path.substring(idx + 1);
+                //                        children.add(path);
+                //                      }
+                //                    }
                 break;
               }
             }
             if (cloudBlob != null) {
-              type = FileType.FILE;
+              fileObjectType = FileType.FILE;
               size = cloudBlob.getProperties().getLength();
               if (cloudBlob.getMetadata().containsKey("ActualLength")) {
                 size = Long.parseLong(cloudBlob.getMetadata().get("ActualLength"));
@@ -184,18 +208,18 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
               Date lastModified2 = cloudBlob.getProperties().getLastModified();
               lastModified = lastModified2 == null ? 0 : lastModified2.getTime();
             } else if (cloudDir != null) {
-              type = FileType.FOLDER;
+              fileObjectType = FileType.FOLDER;
               size = children.size();
               lastModified = 0;
             } else {
               lastModified = 0;
-              type = FileType.IMAGINARY;
+              fileObjectType = FileType.IMAGINARY;
               size = 0;
             }
           }
         } else {
           lastModified = 0;
-          type = FileType.IMAGINARY;
+          fileObjectType = FileType.IMAGINARY;
           size = 0;
           cloudBlob = null;
           cloudDir = null;
@@ -211,12 +235,12 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   @Override
   protected void doDetach() throws Exception {
-    if (this.attached) {
-      this.attached = false;
+    if (this.isAttached) {
+      this.isAttached = false;
       this.children = null;
       this.size = 0;
-      this.type = null;
-      this.container = null;
+      this.fileObjectType = null;
+      this.blobClient = null;
       this.containerPath = null;
       this.cloudBlob = null;
       this.cloudDir = null;
@@ -239,41 +263,53 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   @Override
   protected void doDelete() throws Exception {
-    if (container == null) {
-      throw new UnsupportedOperationException();
-    } else {
-      FileObject parent = getParent();
-      boolean lastFile = ((AzureFileObject) parent).doListChildren().length == 1;
-      try {
-        if (containerPath.equals("")) {
-          container.delete();
-        } else {
-          if (cloudBlob != null) cloudBlob.delete();
-          else if (cloudDir != null) {
-            for (ListBlobItem item :
-                container.listBlobs(((AzureFileName) getName()).getPathAfterContainer(), true)) {
-              String path = item.getUri().getPath();
-              if (item instanceof CloudBlob && path.startsWith(getName().getPath())) {
-                ((CloudBlob) item).delete();
-              }
-            }
-          } else {
-            throw new UnsupportedOperationException();
-          }
-          // If this was the last file in the create, we create a new
-          // marker file to keep the directory open
-          if (lastFile) {
-            FileObject marker = parent.resolveFile(markerFileName);
-            marker.createFile();
-          }
-        }
-      } finally {
-        type = FileType.IMAGINARY;
-        children = null;
-        size = 0;
-        lastModified = 0;
-      }
+    if (FileType.FILE == doGetType()) {
+      blobClient.delete();
     }
+
+    // once object gets deleted fileType must be set as FileType.IMAGINARY because it's no longer
+    // exist.
+    this.fileObjectType = FileType.IMAGINARY;
+
+    // TODO SR doDelete
+
+    //    if (blobClient == null) {
+    //      throw new UnsupportedOperationException();
+    //    } else {
+    //      FileObject parent = getParent();
+    //      boolean lastFile = ((AzureFileObject) parent).doListChildren().length == 1;
+    //      try {
+    //        if (containerPath.equals("")) {
+    //          blobClient.delete();
+    //        } else {
+    //          if (cloudBlob != null) cloudBlob.delete();
+    //          else if (cloudDir != null) {
+    //            for (BlobItem item :
+    //                blobClient
+    //                    .getContainerClient()
+    //                    .listBlobs(((AzureFileName) getName()).getPathAfterContainer(), true)) {
+    //              String path = item.getUri().getPath();
+    //              if (item instanceof CloudBlob && path.startsWith(getName().getPath())) {
+    //                ((CloudBlob) item).delete();
+    //              }
+    //            }
+    //          } else {
+    //            throw new UnsupportedOperationException();
+    //          }
+    //          // If this was the last file in the create, we create a new
+    //          // marker file to keep the directory open
+    //          if (lastFile) {
+    //            FileObject marker = parent.resolveFile(markerFileName);
+    //            marker.createFile();
+    //          }
+    //        }
+    //      } finally {
+    //        type = FileType.IMAGINARY;
+    //        children = null;
+    //        size = 0;
+    //        lastModified = 0;
+    //      }
+    //    }
   }
 
   @Override
@@ -283,46 +319,52 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   @Override
   protected void doRename(FileObject newfile) throws Exception {
-    if (cloudBlob != null) {
-      // Get the new blob reference
-      CloudBlobContainer newContainer =
-          service.getContainerReference(((AzureFileName) newfile.getName()).getContainer());
-      CloudBlob newBlob =
-          newContainer.getBlobReferenceFromServer(
-              ((AzureFileName) newfile.getName()).getPathAfterContainer().substring(1));
+    // SR TODO fix doRename
 
-      // Start the copy operation
-      newBlob.startCopy(cloudBlob.getUri());
-      // Delete the original blob
-      doDelete();
-    } else {
-      throw new FileSystemException("Renaming of directories not supported on this file.");
-    }
+    //    if (cloudBlob != null) {
+    //      // Get the new blob reference
+    //      BlobClient blobClient =
+    //          containerClient.getBlobClient(((AzureFileName) newfile.getName()).getContainer());
+    //      CloudBlob newBlob =
+    //          newContainer.getBlobReferenceFromServer(
+    //              ((AzureFileName) newfile.getName()).getPathAfterContainer().substring(1));
+    //
+    //      // Start the copy operation
+    //      newBlob.startCopy(cloudBlob.getUri());
+    //      // Delete the original blob
+    //      doDelete();
+    //    } else {
+    //      throw new FileSystemException("Renaming of directories not supported on this file.");
+    //    }
   }
 
   @Override
   protected void doCreateFolder() throws StorageException, URISyntaxException, IOException {
-    if (container == null) {
-      throw new UnsupportedOperationException();
-    } else if (containerPath.equals("")) {
-      container.create();
-      type = FileType.FOLDER;
-      children = new ArrayList<>();
-    } else {
-      /*
-       * Azure doesn't actually have folders, so we create a temporary
-       * 'file' in the 'folder'
-       */
-      CloudBlockBlob blob =
-          container.getBlockBlobReference(containerPath.substring(1) + "/" + markerFileName);
-      byte[] buf =
-          ("This is a temporary blob created by a Commons VFS application to simulate a folder. It "
-                  + "may be safely deleted, but this will hide the folder in the application if it is empty.")
-              .getBytes(StandardCharsets.UTF_8);
-      blob.uploadFromByteArray(buf, 0, buf.length);
-      type = FileType.FOLDER;
-      children = new ArrayList<>();
-    }
+    // TODO SR fix doCreateFolder
+
+    //    if (blobClient == null) {
+    //      throw new UnsupportedOperationException();
+    //    } else if (containerPath.equals("")) {
+    //      blobClient.create();
+    //      type = FileType.FOLDER;
+    //      children = new ArrayList<>();
+    //    } else {
+    //      /*
+    //       * Azure doesn't actually have folders, so we create a temporary
+    //       * 'file' in the 'folder'
+    //       */
+    //      CloudBlockBlob blob =
+    //          blobClient.getBlockBlobReference(containerPath.substring(1) + "/" + markerFileName);
+    //      byte[] buf =
+    //          ("This is a temporary blob created by a Commons VFS application to simulate a
+    // folder. It "
+    //                  + "may be safely deleted, but this will hide the folder in the application
+    // if it is empty.")
+    //              .getBytes("UTF-8");
+    //      blob.uploadFromByteArray(buf, 0, buf.length);
+    //      type = FileType.FOLDER;
+    //      children = new ArrayList<>();
+    //    }
   }
 
   @Override
@@ -332,21 +374,23 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   @Override
   protected OutputStream doGetOutputStream(boolean bAppend) throws Exception {
-    if (container != null && !containerPath.equals("")) {
-      if (bAppend) throw new UnsupportedOperationException();
-      final CloudBlockBlob cbb = container.getBlockBlobReference(removeLeadingSlash(containerPath));
-      type = FileType.FILE;
-      blobOutputStream =
-          container.getBlockBlobReference(removeLeadingSlash(containerPath)).openOutputStream();
-      return new BlockBlobOutputStream(cbb, blobOutputStream);
-    } else {
-      throw new UnsupportedOperationException();
-    }
+    // TODO SR fix doGetOutputStream
+
+    //    if (blobClient != null && !containerPath.equals("")) {
+    //      if (bAppend) throw new UnsupportedOperationException();
+    //      final CloudBlockBlob cbb =
+    //          blobClient.getBlockBlobReference(removeLeadingSlash(containerPath));
+    //      type = FileType.FILE;
+    //      return new BlockBlobOutputStream(cbb, cbb.openOutputStream());
+    //    } else {
+    //      throw new UnsupportedOperationException();
+    //    }
+    return null;
   }
 
   @Override
   protected InputStream doGetInputStream() throws Exception {
-    if (container != null && !containerPath.equals("") && type == FileType.FILE) {
+    if (blobClient != null && !containerPath.equals("") && fileObjectType == FileType.FILE) {
       return new BlobInputStream(cloudBlob.openInputStream(), size);
     } else {
       throw new UnsupportedOperationException();
@@ -355,7 +399,8 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
 
   @Override
   protected FileType doGetType() throws Exception {
-    return type;
+
+    return fileObjectType;
   }
 
   @Override

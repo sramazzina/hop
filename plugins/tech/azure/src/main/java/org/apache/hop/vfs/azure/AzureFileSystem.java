@@ -18,7 +18,8 @@
 
 package org.apache.hop.vfs.azure;
 
-import com.microsoft.azure.storage.blob.CloudBlobClient;
+import com.azure.storage.blob.BlobContainerAsyncClient;
+import com.azure.storage.blob.BlobContainerClient;
 import java.util.Collection;
 import org.apache.commons.vfs2.Capability;
 import org.apache.commons.vfs2.FileObject;
@@ -29,18 +30,21 @@ import org.apache.commons.vfs2.provider.AbstractFileSystem;
 
 public class AzureFileSystem extends AbstractFileSystem {
 
-  private final CloudBlobClient client;
+  private final BlobContainerClient client;
+  private final BlobContainerAsyncClient clientAsync;
 
   private final String account;
 
   public AzureFileSystem(
       AzureFileName fileName,
-      CloudBlobClient service,
+      BlobContainerClient client,
+      BlobContainerAsyncClient clientAsync,
       FileSystemOptions fileSystemOptions,
       String account)
       throws FileSystemException {
     super(fileName, null, fileSystemOptions);
-    this.client = service;
+    this.client = client;
+    this.clientAsync = clientAsync;
     this.account = account;
   }
 
@@ -51,7 +55,7 @@ public class AzureFileSystem extends AbstractFileSystem {
 
   @Override
   protected FileObject createFile(AbstractFileName name) throws Exception {
-    return new AzureFileObject(name, this, client);
+    return new AzureFileObject(name, this, client, clientAsync);
   }
 
   public String getAccount() {
