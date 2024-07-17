@@ -129,11 +129,16 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
         currentFilePath = "";
       } else {
 
-        currentFilePath = ((AzureFileName) getName()).getPathAfterContainer();
+        currentFilePath =
+            ((AzureFileName) getName())
+                .getPathAfterContainer()
+                .substring(1, ((AzureFileName) getName()).getPathAfterContainer().length());
         lpo.setPath(currentFilePath);
         // TODO SR Evaluate using lpo.setRecursive
-        dataLakeFileClient =
-            fileSystemClient.getFileClient(((AzureFileName) getName()).getContainer());
+        //        dataLakeFileClient =
+        //            fileSystemClient.getFileClient(((AzureFileName) getName()).getContainer());
+        dataLakeFileClient = fileSystemClient.getFileClient(currentFilePath);
+
         if (dataLakeFileClient.exists()) {
           children = new ArrayList<>();
           if (currentFilePath.equals("")) {
