@@ -106,8 +106,11 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
   @Override
   protected void doAttach() throws URISyntaxException, StorageException {
     if (!attached) {
+      // TODO SERASOFT TO BE FIXED
       DataLakeFileSystemClient fileSystemClient =
-          service.getFileSystemClient(getAbstractFileSystem().getFilesystemName());
+          service.getFileSystemClient(((AzureFileName) getName()).getContainer());
+      boolean isExisting = fileSystemClient.exists();
+
       ListPathsOptions lpo = new ListPathsOptions();
 
       if (getName().getPath().equals("/")) {
@@ -270,8 +273,8 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
   @Override
   protected void doDelete() throws Exception {
 
-    DataLakeFileSystemClient fileSystemClient =
-        service.getFileSystemClient(getAbstractFileSystem().getFilesystemName());
+    // TODO SERASOFT TO BE FIXED
+    DataLakeFileSystemClient fileSystemClient = service.getFileSystemClient("parquet");
 
     if (dataLakeFileClient == null) {
       throw new UnsupportedOperationException();
@@ -329,8 +332,8 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
   @Override
   protected void doRename(FileObject newfile) throws Exception {
     if (pathItem != null) {
-      DataLakeFileSystemClient fileSystemClient =
-          service.getFileSystemClient(getAbstractFileSystem().getFilesystemName());
+      // TODO SERASOFT TO BE FIXED
+      DataLakeFileSystemClient fileSystemClient = service.getFileSystemClient("parquet");
 
       // Get the new blob reference
       //      CloudBlobContainer newContainer =
@@ -340,9 +343,9 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
       //              ((AzureFileName) newfile.getName()).getPathAfterContainer().substring(1));
       DataLakeFileClient fileClient = fileSystemClient.getFileClient(pathItem.getName());
       // Start the copy operation
+      // TODO SERASOFT TO BE FIXED
       fileClient.rename(
-          getAbstractFileSystem().getFilesystemName(),
-          ((AzureFileName) newfile.getName()).getPathAfterContainer().substring(1));
+          "parquet", ((AzureFileName) newfile.getName()).getPathAfterContainer().substring(1));
       //      newBlob.startCopy(cloudBlob.getUri());
       // Delete the original blob
       doDelete();
@@ -370,8 +373,8 @@ public class AzureFileObject extends AbstractFileObject<AzureFileSystem> {
   @Override
   protected InputStream doGetInputStream() throws Exception {
     if (dataLakeFileClient != null && !currentFilePath.equals("") && type == FileType.FILE) {
-      DataLakeFileSystemClient fileSystemClient =
-          service.getFileSystemClient(getAbstractFileSystem().getFilesystemName());
+      // TODO SERASOFT TO BE FIXED
+      DataLakeFileSystemClient fileSystemClient = service.getFileSystemClient("parquet");
       DataLakeFileClient dataLakeFileClient = fileSystemClient.getFileClient(pathItem.getName());
       return new BlobInputStream(dataLakeFileClient.openInputStream(), size);
     } else {

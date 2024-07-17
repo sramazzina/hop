@@ -30,19 +30,16 @@ import org.apache.commons.vfs2.provider.AbstractFileSystem;
 public class AzureFileSystem extends AbstractFileSystem {
 
   private final DataLakeServiceClient serviceClient;
-  private final String fsName;
   private final String account;
 
   public AzureFileSystem(
       AzureFileName fileName,
       DataLakeServiceClient serviceClient,
-      String fsName,
       FileSystemOptions fileSystemOptions,
       String account)
       throws FileSystemException {
     super(fileName, null, fileSystemOptions);
     this.serviceClient = serviceClient;
-    this.fsName = fsName;
     this.account = account;
   }
 
@@ -54,10 +51,6 @@ public class AzureFileSystem extends AbstractFileSystem {
   @Override
   protected FileObject createFile(AbstractFileName name) throws Exception {
     return new AzureFileObject(name, this, serviceClient);
-  }
-
-  public String getFilesystemName() {
-    return fsName;
   }
 
   public String getAccount() {

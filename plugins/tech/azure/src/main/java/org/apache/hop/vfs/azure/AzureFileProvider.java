@@ -164,12 +164,7 @@ public class AzureFileProvider extends AbstractOriginatingFileProvider {
               .buildClient();
 
       azureFileSystem =
-          new AzureFileSystem(
-              azureRootName,
-              serviceClient,
-              ((AzureFileName) fileName).getContainer(),
-              fileSystemOptions,
-              account);
+          new AzureFileSystem(azureRootName, serviceClient, fileSystemOptions, account);
 
     } finally {
       UserAuthenticatorUtils.cleanup(authData);

@@ -43,6 +43,15 @@ public class AzureFileNameParser extends HostFileNameParser {
   @Override
   public FileName parseUri(final VfsComponentContext context, FileName base, String uri)
       throws FileSystemException {
+
+    // TODO SERASOFT
+    // This fix is temporary and has been added because under certain conditions we got an uri
+    // like azure:/// that is completely wrong
+    // Fix aded but prblem needs further investigation to fix it appropriately.
+    String rightUriPart = uri.substring(uri.lastIndexOf(':') + 1);
+    uri = (rightUriPart.equals("////") ? base.toString() + "/" : uri);
+    // End of temporary fix
+
     StringBuilder sb = new StringBuilder(uri);
 
     UriParser.normalisePath(sb);
